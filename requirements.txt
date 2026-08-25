@@ -1,0 +1,19 @@
+# PMO Status Report Automation - Python Dependencies
+# Production version - minimal dependencies for reliability
+
+# Core Claude API
+anthropic>=0.28.0
+
+# Data processing
+PyYAML>=6.0
+python-dateutil>=2.8.2
+
+# Optional: For Excel/Smartsheet support
+# Uncomment if you need to process Excel files
+# pandas>=2.0.0
+# openpyxl>=3.1.0
+
+# Optional: For Power Automate/Azure integration (future)
+# azure-storage-blob>=12.16.0
+# azure-identity>=1.12.0
+# requests>=2.31.0
