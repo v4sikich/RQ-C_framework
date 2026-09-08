@@ -3,15 +3,21 @@
 
 # Core Claude API
 anthropic>=0.28.0
+python-dotenv>=1.0.0
 
 # Data processing
 PyYAML>=6.0
 python-dateutil>=2.8.2
 
-# Optional: For Excel/Smartsheet support
-# Uncomment if you need to process Excel files
-# pandas>=2.0.0
-# openpyxl>=3.1.0
+# Required for Excel/CSV input handling (scripts/input_adapter.py, --excel support in flatten.py)
+pandas>=2.0.0
+openpyxl>=3.1.0
+tabulate>=0.9.0
+
+# Required for DOCX/PDF/PPTX input handling (scripts/input_adapter.py)
+python-docx>=1.1.0
+pypdf>=4.0.0
+python-pptx>=0.6.23
 
 # Optional: For Power Automate/Azure integration (future)
 # azure-storage-blob>=12.16.0

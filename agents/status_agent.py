@@ -20,7 +20,7 @@ import anthropic
 class StatusReportAgent:
     """Generates beautiful HTML status reports using Claude Sonnet."""
 
-    def __init__(self, model: str = "claude-sonnet-5-20250514"):
+    def __init__(self, model: str = "claude-sonnet-5"):
         self.client = anthropic.Anthropic()
         self.model = model
 
@@ -44,15 +44,23 @@ Here's the project data to format:
 Return a complete, self-contained HTML page (no external CSS/JS).
 
 Key sections to include:
-1. Header: Project name + date + health status badge
+1. Header: Project name + date + health status badge (+ project_closure_date if it is non-null;
+   omit that line entirely if it's null - do not invent a closure date)
 2. Executive Summary: 2-3 sentence overview
-3. Health Snapshot: R/Y/G indicator with reason
-4. Timeline: Current status vs. plan
-5. Key Accomplishments: What shipped
-6. Upcoming Focus: Next 30 days
-7. Risks & Mitigations: What matters
-8. Critical Blockers: What needs attention (if any)
-9. Next Steps/Recommendations: What to do
+3. Status Indicators: four separate badges for Scope / Timeline / Resources / Budget, using the
+   data.status_indicators object. For any dimension that is null, show a neutral "Not assessed"
+   label instead of a color - do not guess a color for it.
+4. Metrics: contract type (Fixed Fee / Time & Materials, from data.metrics.contract_type) and
+   estimated/consumed/remaining hours or budget (from data.metrics). Show "TBD" for any null
+   field in data.metrics - never calculate or guess a number that isn't explicitly provided.
+5. Timeline: Current status vs. plan
+6. Key Accomplishments: What shipped
+7. Upcoming Focus: Next 30 days
+8. Risks & Mitigations: What matters
+9. Critical Blockers: What needs attention (if any)
+10. Key Stakeholders: name + role for each entry in data.key_stakeholders. If that list is empty,
+    omit this section entirely rather than inventing names or roles.
+11. Next Steps/Recommendations: What to do
 
 Style requirements:
 - Sikich brand colors: #003366 (navy), #0099cc (light blue), #ffffff (white), #f5f5f5 (light gray)
@@ -93,13 +101,18 @@ CRITICAL RULES:
 1. Return ONLY the HTML. No explanation text before or after.
 2. Make it beautiful - use whitespace, typography, colors effectively
 3. Red = critical (health), Yellow = warning, Green = healthy
-4. Include Sikich logo reference (or at minimum say "Sikich" in header/footer)
+4. Say "Sikich" (no legal suffix like "LLC" or "LLP") in header/footer - the entity's exact legal
+   form isn't part of the project data, so don't guess it.
 5. Collapsible sections should start CLOSED to keep report scannable
-6. Include "Generated on [date]" in footer
+6. Include "Generated on [date]" in footer, using data.status_date (or another explicit date
+   field in the data) - do not invent a date that isn't in the provided data.
 7. All CSS must be inline in <style> tag (no external files)
 8. Make sure text has good contrast (dark text for readability)
 9. Include subtle borders/dividers between sections
 10. For R/Y/G indicator: use actual colors (red=#d32f2f, yellow=#fbc02d, green=#388e3c)
+11. Use ONLY the data provided below. Do not invent dates, percentages, names, hours, or other
+    figures that aren't present in the JSON. If a value is null or a list is empty, either show
+    "TBD" or omit that line/section - never fabricate a plausible-sounding value to fill a gap.
 
 Remember: This report will be sent to executives and clients. Make it look like Sikich knows what it's doing.
 """
@@ -131,7 +144,7 @@ Remember: This report will be sent to executives and clients. Make it look like 
         print(f"🎨 Calling {self.model} for HTML generation...")
         response = self.client.messages.create(
             model=self.model,
-            max_tokens=8192,
+            max_tokens=20000,
             messages=[
                 {
                     "role": "user",
@@ -140,8 +153,14 @@ Remember: This report will be sent to executives and clients. Make it look like 
             ],
         )
 
-        # Extract HTML from response
-        response_text = response.content[0].text
+        # Extract HTML from response. Some models return a ThinkingBlock before
+        # the TextBlock, so find the actual text block rather than assuming index 0.
+        response_text = next((block.text for block in response.content if block.type == "text"), None)
+        if response_text is None:
+            raise ValueError("No text content found in Claude response")
+
+        if response.stop_reason == "max_tokens":
+            print(f"⚠️  Response was truncated (hit max_tokens=20000 limit) - HTML will likely be incomplete")
 
         # Find HTML content (it should start with <!DOCTYPE or <html)
         html_start = response_text.find('<!DOCTYPE')

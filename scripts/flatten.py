@@ -195,6 +195,10 @@ class FlatteningEngine:
             content += f"**Current Status**: {metadata['timeline_status']}\n"
             confidence = min(99.0, confidence + 15)
 
+        if "project_closure_date" in metadata:
+            content += f"**Project Closure Date**: {metadata['project_closure_date']}\n"
+            confidence = min(99.0, confidence + 15)
+
         return content, confidence
 
     def extract_excel_data(self, excel_path: str) -> Tuple[str, float]:
@@ -264,6 +268,14 @@ class FlatteningEngine:
                    float(metadata.get("budget_total", "$1").replace("$", "").replace(",", ""))) * 100
             content += f"**Spent**: {metadata['budget_spent']} ({pct:.1f}%)\n"
             confidence = 95.0
+
+        if "contract_type" in metadata:
+            content += f"**Contract Type**: {metadata['contract_type']}\n"
+            confidence = max(confidence, 90.0)
+
+        if "hours_estimated" in metadata:
+            content += f"**Estimated Hours**: {metadata['hours_estimated']}\n"
+            confidence = max(confidence, 90.0)
 
         if confidence == 40.0:
             content += "\n*No budget information found. Add to metadata if available.*\n"
