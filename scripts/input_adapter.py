@@ -207,21 +207,49 @@ def _read_csv_robust(path: Path) -> pd.DataFrame:
     return pd.read_csv(path, encoding="latin-1")
 
 
-def combine_csvs_to_excel(input_dir: Path, output_path: Path) -> Optional[Path]:
-    """Merge every .csv export into one .xlsx workbook (one sheet per CSV) so the
-    pipeline's existing single-file Excel input keeps working no matter how many
-    separate CSV exports a real project workbook was split into."""
+def _read_workbook_sheets(path: Path) -> List[tuple]:
+    """Read every sheet of one workbook as (sheet_name, dataframe) pairs."""
+    try:
+        excel_file = pd.ExcelFile(path)
+    except Exception as e:
+        print(f"   [skipped] {path.name}: {e}")
+        return []
+
+    sheets = []
+    for sheet_name in excel_file.sheet_names:
+        try:
+            df = pd.read_excel(path, sheet_name=sheet_name)
+        except Exception as e:
+            print(f"   [skipped] {path.name}::{sheet_name}: {e}")
+            continue
+        if df.empty:
+            continue
+        sheets.append((sheet_name, df))
+    return sheets
+
+
+def combine_tabular_sources_to_excel(input_dir: Path, output_path: Path) -> Optional[Path]:
+    """Merge every CSV export and every Excel workbook found into one .xlsx (one
+    sheet per CSV, every sheet of every workbook carried over) so a real project
+    folder can hand over any number of spreadsheets/exports without the pipeline
+    silently dropping all but one."""
     csv_files = discover_csv_files(input_dir)
-    if not csv_files:
+    workbook_files = discover_workbook_files(input_dir)
+    if not csv_files and not workbook_files:
         return None
 
+    # Exactly one workbook and no CSVs to merge in: pass it through as-is
+    # rather than round-tripping it through pandas.
+    if not csv_files and len(workbook_files) == 1:
+        return workbook_files[0]
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    used_names = set()
+    used_names: set = set()
     wrote_any = False
-    short_names = _strip_common_prefix([p.stem for p in csv_files])
+    csv_short_names = _strip_common_prefix([p.stem for p in csv_files])
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        for path, short_name in zip(csv_files, short_names):
+        for path, short_name in zip(csv_files, csv_short_names):
             try:
                 df = _read_csv_robust(path)
             except Exception as e:
@@ -231,6 +259,16 @@ def combine_csvs_to_excel(input_dir: Path, output_path: Path) -> Optional[Path]:
                 continue
             df.to_excel(writer, sheet_name=_safe_sheet_name(short_name, used_names), index=False)
             wrote_any = True
+
+        multiple_workbooks = len(workbook_files) > 1
+        for wb_path in workbook_files:
+            for sheet_name, df in _read_workbook_sheets(wb_path):
+                # Only prefix with the source workbook name when there's more
+                # than one workbook, so a single workbook's sheets keep their
+                # original names (matches the old passthrough behavior).
+                label = f"{wb_path.stem}_{sheet_name}" if multiple_workbooks else sheet_name
+                df.to_excel(writer, sheet_name=_safe_sheet_name(label, used_names), index=False)
+                wrote_any = True
 
     return output_path if wrote_any else None
 
@@ -319,21 +357,17 @@ def prepare_pipeline_inputs(input_dir: str, staging_dir: str) -> Dict[str, Optio
     transcript_path.write_text(combine_text_sources(input_path), encoding="utf-8")
     print(f"   ✅ Combined {len(text_files)} text/markdown file(s) -> {transcript_path.name}")
 
-    # 2. Excel: merge CSV exports, if any; otherwise pass through a project workbook as-is
+    # 2. Excel: merge every CSV export and every workbook found into one
+    #    combined spreadsheet (or pass a lone workbook through as-is)
     csv_files = discover_csv_files(input_path)
-    excel_path = combine_csvs_to_excel(input_path, staging_path / "combined_data.xlsx")
-    if excel_path:
-        print(f"   ✅ Merged {len(csv_files)} CSV file(s) -> {excel_path.name}")
+    workbook_files = discover_workbook_files(input_path)
+    excel_path = combine_tabular_sources_to_excel(input_path, staging_path / "combined_data.xlsx")
+    if excel_path and excel_path.parent == staging_path:
+        print(f"   ✅ Merged {len(csv_files)} CSV file(s) and {len(workbook_files)} workbook(s) -> {excel_path.name}")
+    elif excel_path:
+        print(f"   ✅ Using project workbook -> {excel_path.name}")
     else:
-        workbook_files = discover_workbook_files(input_path)
-        if workbook_files:
-            excel_path = workbook_files[0]
-            print(f"   ✅ Using project workbook -> {excel_path.name}")
-            if len(workbook_files) > 1:
-                skipped = ", ".join(p.name for p in workbook_files[1:])
-                print(f"   ⚠️  Additional workbook(s) found but not used: {skipped}")
-        else:
-            print(f"   ℹ️  No CSV or workbook files found - skipping Excel input")
+        print(f"   ℹ️  No CSV or workbook files found - skipping Excel input")
 
     # 3. Metadata: extract real values from a SOW, if present
     metadata_path = None
