@@ -26,11 +26,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Windows console defaults to cp1252, which can't encode the emoji used in
-# progress output below. Force UTF-8 so prints don't crash mid-pipeline.
-if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+# Windows console defaults to cp1252, and a minimal Linux container can default
+# to a non-UTF-8 (or even POSIX/C) locale - either way the emoji used in
+# progress output below would crash the print. Force UTF-8 everywhere so this
+# behaves the same on a dev machine, in Docker, or anywhere else.
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
 
 # Add agents directory to path
 sys.path.insert(0, str(Path(__file__).parent / "agents"))

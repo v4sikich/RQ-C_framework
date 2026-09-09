@@ -1,0 +1,33 @@
+# Never bake real client data, generated output, or secrets into the image -
+# these are supplied/collected via volume mounts at `docker run` time instead.
+sample_data/
+output/
+.env
+.env.local
+
+# Git / editor / OS noise
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Project-specific data folders (see .gitignore - same reasoning applies here)
+projects/*/input/
+projects/*/workflow_execution/
+projects/*/output/
+
+# Docs and other repo assets not needed inside the image
+*.md
+*.docx
+*.png
+projects/
